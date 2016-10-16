@@ -10,6 +10,8 @@ namespace Socrata2SqlMigrationTool
     public partial class Socrata2Sql : Page
     {
         //  Conection string a la base de datos sql
+        //por ahora funciona con la base de datos ya creada desarrollar para que
+        //la base de datos se cree en el primer uso de la aplicacion
         string connectionString = System.Configuration.ConfigurationManager.ConnectionStrings["Socrata2SqlConnectionString"].ConnectionString;
         // variable del url del que se halara la data
         string url;
@@ -20,8 +22,10 @@ namespace Socrata2SqlMigrationTool
         //hala el contenido del archivo y lo coloca en textfromfile
         WebClient wc = new WebClient();
 
+        //funcion principal que inicia la pagina
         protected void Page_Load(object sender, EventArgs e)
         {
+            //se elimino este codigo para usar la base de datos ya creada
             //crea el query para crear la base de datos la primera vez
             //string dbquery = GetDbCreationQuery(databaseName);
             //cada vez que inicie la pagina creara o verificara si la base de datos existe
@@ -29,9 +33,12 @@ namespace Socrata2SqlMigrationTool
 
         }
 
-        //metodo que repsonde al presionar el boton luego de entrar el url
+        //metodo que responde al presionar el boton luego de entrar el url
         protected void GetUrl_Click(object sender, EventArgs e)
         {
+            //botones apagados y prendidos deacuerdo a Get URL
+            //el usuario acaba de presionar el analize (get url)
+            // se muestra el de insertar y el de cancel
             ButtonInsert.Visible = true;
             ButtonGetUrl.Visible = false;
             ButtonCancel.Visible = true;
@@ -46,38 +53,55 @@ namespace Socrata2SqlMigrationTool
             //coloca el string en el label
             LabelGotFormat.Text = format;
 
-            
+            //hala el string del web. trabajar con el mapa de caracteres
+            //presenta las letras latinas como underscore en mi laptop
             wc.Headers.Add(HttpRequestHeader.AcceptCharset, "UTF-8");
+            //se coloca la data en una variable string
             var textFromFile = wc.DownloadString(url);
+            //se eliminan todas las posibilidades de carriage return/line feed
             textFromFile = Regex.Replace(textFromFile, @"\r\n?|\n","");
             //cuenta cuantos rows hay usando el corchete de cierre
             int numberofrows = CountStringOnString(textFromFile, "}");
             //cuenta cuantos records tiene el row mas grande...
             // se debe modificar para anadir rows. Considerar subir la data transacional y hacer pivots
             int numberofrecords = FillRowString(textFromFile,numberofrows);
-            //tira el contenido del textfromfile a la pagina       
 
+            //coloca los numeros de hileras en un textbox
             LabelGotNumRows.Text = numberofrows.ToString();
+            //coloca los numeros de records en la primera hilera
             LabelGotNumRecords.Text = numberofrecords.ToString();
 
+            //crea un query para crear la tabla
             string tableQuery = CreateTableQuery(rowstring, numberofrecords, tablename);
+            //ejecuta el query que crea la tabla
             ExecuteQuery(tableQuery);
             //string tableQuery = GenerateColumnList(rowstring, numberofrecords);
             LabelContent.Text = "Table "+tablename+" was succesfully added to database"+ databaseName;
-
-            
         }
+
+        //crea un string que solo contiene un row
         string CreateRowstring(string textFromFile)
         {
+            //hala de el archivo entero usando como marcador la primera
+            //instancia del corchete
             textFromFile = GetRemainingString(textFromFile, "{");
+            //devuelve la hilera en que se trabaja
             return GetRow(textFromFile);
         }
+
+        //meeotdo que obtiene la data luego de creada la tabla
         string GetDataForTable(string textFromFile, int numberofrows, string tablename)
         {
+            //puntero o centinela para contar las hileras
             int rowpointer = 0;
+            //variable query vacia para llenar el query que inserta datos
             string query = "";
+            //mientras el puntero sea menor que el numero de hileras
             while (rowpointer < numberofrows)
             {
+                //crea un query insert por cada hilera
+                //solucion temporera que representa peso para la base de datos
+                //pero garantiza que todas las hileras se alimentan
                 query += "INSERT INTO [" + tablename + "] " ;
                 string columname = " (";
                 string data = " VALUES (";
@@ -87,13 +111,16 @@ namespace Socrata2SqlMigrationTool
                 string record;
                 string currentrecord;
                 string currentcolumn;
+                //puntero o centinela que garantiza iterar 
+                //por cada record
                 while (recordpointer < numberofrecords)
                 {
                     currentrecord = GetRecord(currentrow);
                     currentcolumn = GetColumnName(currentrecord).Trim();
                     columname += "["+ currentcolumn + "], ";
                     record = GetDatafromRecord(currentrecord);
-                    
+                    // se modifica el formato datetime que contiene una T
+                    //en sql la t de time da error. se sustituye por espacio
                     if (IsDate(currentcolumn))
                     { record = "\'" + record.Replace('T', ' ').Trim() + "\'"; }
                     data += record + ", ";
@@ -108,7 +135,7 @@ namespace Socrata2SqlMigrationTool
                 { record = "\'"  +record.Replace('T', ' ').Trim() + "\'"; }
                 data += record + "); ";
                 //incorporar codigo que verifique presencia de columnas y 
-                //anada columnas que faltan con alter table
+                //a~nada columnas que faltan con alter table
                 query += columname + data;
                 textFromFile = GetRemainingString(textFromFile, "}");
                 rowpointer++;
@@ -116,11 +143,14 @@ namespace Socrata2SqlMigrationTool
             ExecuteQuery(query);
             return "Data has been inserted succefully " ;
         }
+        //hala solo la data del record usando como marcador el colon :
         string GetDatafromRecord(string record)
         {
             record = GetRemainingString(record, ":");
             return record.Replace("\"","");
         }
+
+        //metodo que llena la hilera rowstring del archivo original
         private int FillRowString(string textFromFile, int numberofrows)
         {
             rowstring = CreateRowstring(textFromFile);
@@ -232,6 +262,8 @@ namespace Socrata2SqlMigrationTool
         {
             return fulltext.Substring(fulltext.IndexOf(cutstring) + 1);
         }
+
+        //funcion que obtiene el record de la hilera row
         string GetRecord(string fulltext)
         {
             if (fulltext.IndexOf(",") > 0)
@@ -240,6 +272,7 @@ namespace Socrata2SqlMigrationTool
             { return fulltext; }
 
         }
+        //funcion que hala solo el nombre de la columna
         string GetColumnName(string record)
         {
             record = record.Trim();
@@ -253,6 +286,7 @@ namespace Socrata2SqlMigrationTool
             return record;
         }
 
+        //metodo que genera la lista de columnas para el sql con sus tipos de daots
         string GenerateColumnList(string rowstring, int numberofrecords)
         {
             int rowPointer = 0;
@@ -274,6 +308,8 @@ namespace Socrata2SqlMigrationTool
             return rowlist + " [" + currentcolumn + "] " + currentdatatype;
         }
 
+        //trabajar duro sobre esta funcion usando regular expressions
+        // identificar mejor los decimals/money/floats
         string GetDataType(string data, string columname)
         {
             if (IsDate(columname))
@@ -294,6 +330,7 @@ namespace Socrata2SqlMigrationTool
             }
         }
 
+        //detecta si es o no solo numero para los ints
         public static bool IsOnlyNumbers(string data)
         {
             Regex regex = new Regex("^[0-9]+$");
@@ -306,6 +343,7 @@ namespace Socrata2SqlMigrationTool
             //return strValidateString.All(char.IsDigit);
         }
 
+        //detecta si es o no decimal 
         public static bool Isdecimal(string str)
         {
             int first = str.IndexOf(".");
@@ -317,6 +355,7 @@ namespace Socrata2SqlMigrationTool
             }
             else { return false; }
         }
+        //utiliza los nombres de las columnas para determinar la fecha
         public static bool IsDate(string columname)
         {
             //establecer criterios para idetificar columnas basados en el nombre de la columna
@@ -333,6 +372,7 @@ namespace Socrata2SqlMigrationTool
             }
         }
 
+        //metodo que crea el query de generar la tabla con sus columnas y tipos de datos
         private string CreateTableQuery(string rowstring, int numberofrecords, string tablename)
         {
             string tableQuery = "IF(EXISTS(SELECT * FROM INFORMATION_SCHEMA.TABLES " +
@@ -353,6 +393,7 @@ namespace Socrata2SqlMigrationTool
 
         }
 
+        //responde al boton insert data
         protected void InsertData_Click(object sender, EventArgs e)
         {
             url = TBurlSocrata.Text;
