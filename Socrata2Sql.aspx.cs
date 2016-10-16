@@ -362,6 +362,7 @@ namespace Socrata2SqlMigrationTool
             if ((columname.ToLower() == "fecha")||
                 (columname.ToLower() == "date") ||
                 (columname.ToLower() == "mes")||
+                (columname.ToLower() ==  "yyyy_mm")||
                 (columname.ToLower() == "month"))
             {
                 return true;
